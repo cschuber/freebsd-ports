@@ -305,6 +305,7 @@
     SUBDIR += kdenetwork
     SUBDIR += kdenetwork-filesharing
     SUBDIR += kea
+    SUBDIR += kea-devel
     SUBDIR += keycloak
     SUBDIR += kf5-kcalendarcore
     SUBDIR += kf5-kcontacts

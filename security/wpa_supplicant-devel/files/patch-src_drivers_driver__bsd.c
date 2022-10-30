@@ -1,5 +1,5 @@
---- src/drivers/driver_bsd.c.orig	2022-06-20 04:39:26.000000000 -0700
-+++ src/drivers/driver_bsd.c	2022-07-03 14:15:42.260043000 -0700
+--- src/drivers/driver_bsd.c.orig	2022-10-17 01:27:04.000000000 -0700
++++ src/drivers/driver_bsd.c	2022-10-30 14:32:25.355391000 -0700
 @@ -14,6 +14,7 @@
  #include "driver.h"
  #include "eloop.h"
@@ -8,7 +8,56 @@
  #include "common/wpa_common.h"
  
  #include <ifaddrs.h>
-@@ -853,14 +854,18 @@
+@@ -292,9 +293,11 @@
+ 	return set80211var(priv, IEEE80211_IOC_MLME, &mlme, sizeof(mlme));
+ }
+ 
++#define bsd_get_iface_flags(_a) bsd_ctrl_iface(_a,-1)
+ static int
+-bsd_get_iface_flags(struct bsd_driver_data *drv)
++bsd_ctrl_iface(void *priv, int enable)
+ {
++	struct bsd_driver_data *drv = priv;
+ 	struct ifreq ifr;
+ 
+ 	os_memset(&ifr, 0, sizeof(ifr));
+@@ -306,6 +309,26 @@
+ 		return -1;
+ 	}
+ 	drv->flags = ifr.ifr_flags;
++	if (enable == -1)
++		return 0;
++
++	if (enable) {
++		if (ifr.ifr_flags & IFF_UP)
++			return 0;
++		ifr.ifr_flags |= IFF_UP;
++	} else {
++		if (!(ifr.ifr_flags & IFF_UP))
++			return 0;
++		ifr.ifr_flags &= ~IFF_UP;
++	}
++
++	if (ioctl(drv->global->sock, SIOCSIFFLAGS, &ifr) < 0) {
++		wpa_printf(MSG_ERROR, "ioctl[SIOCSIFFLAGS]: %s",
++			   strerror(errno));
++		return -1;
++	}
++
++	drv->flags = ifr.ifr_flags;
+ 	return 0;
+ }
+ 
+@@ -525,7 +548,7 @@
+ 			   __func__);
+ 		return -1;
+ 	}
+-	return 0;
++	return bsd_ctrl_iface(priv, 1);
+ }
+ 
+ static void
+@@ -853,14 +876,18 @@
  		drv = bsd_get_drvindex(global, ifm->ifm_index);
  		if (drv == NULL)
  			return;
@@ -30,7 +79,40 @@
  			wpa_printf(MSG_DEBUG, "RTM_IFINFO: Interface '%s' UP",
  				   drv->ifname);
  			wpa_supplicant_event(drv->ctx, EVENT_INTERFACE_ENABLED,
-@@ -1197,13 +1202,41 @@
+@@ -1025,7 +1052,8 @@
+ 	if (l2_packet_get_own_addr(drv->sock_xmit, params->own_addr))
+ 		goto bad;
+ 
+-	if (bsd_get_iface_flags(drv) < 0)
++	/* mark down during setup */
++	if (bsd_ctrl_iface(drv, 0) < 0)
+ 		goto bad;
+ 
+ 	if (bsd_set_mediaopt(drv, IFM_OMASK, IFM_IEEE80211_HOSTAP) < 0) {
+@@ -1050,6 +1078,8 @@
+ {
+ 	struct bsd_driver_data *drv = priv;
+ 
++	if (drv->ifindex != 0)
++		bsd_ctrl_iface(drv, 0);
+ 	if (drv->sock_xmit != NULL)
+ 		l2_packet_deinit(drv->sock_xmit);
+ 	os_free(drv);
+@@ -1057,6 +1087,13 @@
+ 
+ 
+ static int
++bsd_commit(void *priv)
++{
++	return bsd_ctrl_iface(priv, 1);
++}
++
++
++static int
+ bsd_set_sta_authorized(void *priv, const u8 *addr,
+ 		       unsigned int total_flags, unsigned int flags_or,
+ 		       unsigned int flags_and)
+@@ -1197,13 +1234,41 @@
  }
  
  static int
@@ -73,7 +155,7 @@
  
  	wpa_printf(MSG_DEBUG,
  		"%s: ssid '%.*s' wpa ie len %u pairwise %u group %u key mgmt %u"
-@@ -1220,7 +1253,10 @@
+@@ -1220,7 +1285,10 @@
  		mode = 0 /* STA */;
  		break;
  	case IEEE80211_MODE_IBSS:
@@ -84,7 +166,7 @@
  		break;
  	case IEEE80211_MODE_AP:
  		mode = IFM_IEEE80211_HOSTAP;
-@@ -1249,24 +1285,33 @@
+@@ -1249,24 +1317,33 @@
  		ret = -1;
  	if (wpa_driver_bsd_set_auth_alg(drv, params->auth_alg) < 0)
  		ret = -1;
@@ -132,7 +214,20 @@
  	os_memset(&mlme, 0, sizeof(mlme));
  	mlme.im_op = IEEE80211_MLME_ASSOC;
  	if (params->ssid != NULL)
-@@ -1485,6 +1530,17 @@
+@@ -1309,11 +1386,8 @@
+ 	}
+ 
+ 	/* NB: interface must be marked UP to do a scan */
+-	if (!(drv->flags & IFF_UP)) {
+-		wpa_printf(MSG_DEBUG, "%s: interface is not up, cannot scan",
+-			   __func__);
++	if (bsd_ctrl_iface(drv, 1) < 0)
+ 		return -1;
+-	}
+ 
+ #ifdef IEEE80211_IOC_SCAN_MAX_SSID
+ 	os_memset(&sr, 0, sizeof(sr));
+@@ -1485,6 +1559,17 @@
  	if (devcaps.dc_drivercaps & IEEE80211_C_WPA2)
  		drv->capa.key_mgmt = WPA_DRIVER_CAPA_KEY_MGMT_WPA2 |
  			WPA_DRIVER_CAPA_KEY_MGMT_WPA2_PSK;
@@ -150,7 +245,7 @@
  
  	if (devcaps.dc_cryptocaps & IEEE80211_CRYPTO_WEP)
  		drv->capa.enc |= WPA_DRIVER_CAPA_ENC_WEP40 |
-@@ -1493,6 +1549,7 @@
+@@ -1493,6 +1578,7 @@
  		drv->capa.enc |= WPA_DRIVER_CAPA_ENC_TKIP;
  	if (devcaps.dc_cryptocaps & IEEE80211_CRYPTO_AES_CCM)
  		drv->capa.enc |= WPA_DRIVER_CAPA_ENC_CCMP;
@@ -158,7 +253,7 @@
  
  	if (devcaps.dc_drivercaps & IEEE80211_C_HOSTAP)
  		drv->capa.flags |= WPA_DRIVER_FLAGS_AP;
-@@ -1545,6 +1602,8 @@
+@@ -1545,6 +1631,8 @@
  		}
  		if (ifmr.ifm_current & IFM_IEEE80211_HOSTAP)
  			return IEEE80211_M_HOSTAP;
@@ -167,3 +262,30 @@
  		if (ifmr.ifm_current & IFM_IEEE80211_MONITOR)
  			return IEEE80211_M_MONITOR;
  #ifdef IEEE80211_M_MBSS
+@@ -1605,7 +1693,7 @@
+ 		drv->capa.key_mgmt_iftype[i] = drv->capa.key_mgmt;
+ 
+ 	/* Down interface during setup. */
+-	if (bsd_get_iface_flags(drv) < 0)
++	if (bsd_ctrl_iface(drv, 0) < 0)
+ 		goto fail;
+ 
+ 	/* Proven to work, lets go! */
+@@ -1629,6 +1717,9 @@
+ 	if (drv->ifindex != 0 && !drv->if_removed) {
+ 		wpa_driver_bsd_set_wpa(drv, 0);
+ 
++		/* NB: mark interface down */
++		bsd_ctrl_iface(drv, 0);
++
+ 		wpa_driver_bsd_set_wpa_internal(drv, drv->prev_wpa,
+ 						drv->prev_privacy);
+ 
+@@ -1745,6 +1836,7 @@
+ 	.sta_disassoc		= bsd_sta_disassoc,
+ 	.sta_deauth		= bsd_sta_deauth,
+ 	.sta_set_flags		= bsd_set_sta_authorized,
++	.commit			= bsd_commit,
+ #else /* HOSTAPD */
+ 	.init2			= wpa_driver_bsd_init,
+ 	.deinit			= wpa_driver_bsd_deinit,

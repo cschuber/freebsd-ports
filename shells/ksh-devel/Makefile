@@ -10,6 +10,7 @@
 
 PORTNAME=	ksh
 PORTVERSION=	${AST_COMMIT_DATE}
+PORTREVISION=	1
 CATEGORIES=	shells
 PKGNAMESUFFIX=	-devel
 
@@ -33,20 +34,8 @@ GH_ACCOUNT=	ksh93
 GH_PROJECT=	ksh
 GH_TAGNAME=	${HASH}
 
-# IMPORTANT:	Disabling conflicts, i.e. -DDISABLE_CONFLICTS will result in
-#		arcane build failures due to already installed ksh/ksh93 in
-#		$PATH.
-KSH_CONFLICTS=		pdksh
-KSH93_CONFLICTS=	ksh93 ast-ksh
-KSH93D_CONFLICTS=	ksh93 ast-ksh
-
-OPTIONS_DEFAULT=	KSH93 EXAMPLES
+OPTIONS_DEFAULT=	EXAMPLES
 OPTIONS_DEFINE=		EXAMPLES STATIC
-OPTIONS_SINGLE=		BIN_KSH
-OPTIONS_SINGLE_BIN_KSH=	KSH KSH93 KSH93D
-KSH_DESC=		Install to ${PREFIX}/bin/ksh
-KSH93_DESC=		Install to ${PREFIX}/bin/ksh93
-KSH93D_DESC=		Install to ${PREFIX}/bin/ksh93d (development)
 
 CFLAGS+=	-DMAP_TYPE
 LDFLAGS+=	-lm
@@ -54,16 +43,30 @@ MAKE_ENV=	CCFLAGS="-Wno-unused-value -Wno-parentheses -Wno-logical-op-parenthese
 
 STATIC_MAKE_ENV=	LDFLAGS+=-static
 
-KSH_PLIST_SUB=		93=""
-KSH93_PLIST_SUB=	93="93"
-KSH93D_PLIST_SUB=	93="93d"
+FLAVORS=	ksh ksh93 ksh93d
+FLAVOR=		ksh93
 
-.include <bsd.port.options.mk>
 
-.if ${PORT_OPTIONS:MKSH93D}
+.include <bsd.port.pre.mk>
+
+.if ${FLAVOR} == ksh93d
+# Install to ${PREFIX}/bin/ksh93d (development)
+CONFLICTS=	ksh93 ast-ksh
 PSUFFIX=	93d
-.elif ${PORT_OPTIONS:MKSH93}
+_PLIST_SUB=	93="93d"
+.if ${FLAVOR} == ksh93
+# Install to ${PREFIX}/bin/ksh93
+# IMPORTANT:	Disabling conflicts, i.e. -DDISABLE_CONFLICTS will result in
+#		arcane build failures due to already installed ksh/ksh93 in
+#		$PATH.
+CONFLICTS=	ksh93 ast-ksh
 PSUFFIX=	93
+PLIST_SUB=	93="93"
+.else
+# Install to ${PREFIX}/bin/ksh
+CONFLICTS=	pdksh
+PSUFFIX=
+PLIST_SUB=	93=""
 .endif
 
 post-patch:

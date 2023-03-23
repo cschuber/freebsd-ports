@@ -14,7 +14,7 @@
 
 PORTNAME=	ksh93
 DISTVERSION=	93u
-PORTREVISION=	2
+PORTREVISION=	3
 PORTEPOCH=	2
 CATEGORIES=	shells
 DIST_SUBDIR=	ksh93
@@ -31,16 +31,8 @@ USE_GITHUB=	yes
 GH_ACCOUNT=	att
 GH_PROJECT=	ast
 
-KSH_CONFLICTS=		pdksh
-KSH93_CONFLICTS=	ksh93-devel ast-ksh
-
 OPTIONS_DEFAULT=	KSH93 EXAMPLES
 OPTIONS_DEFINE=		EXAMPLES STATIC
-OPTIONS_SINGLE=		BIN_KSH
-OPTIONS_SINGLE_BIN_KSH=	KSH KSH93 KSH93L
-KSH_DESC=		Install to ${PREFIX}/bin/ksh
-KSH93_DESC=		Install to ${PREFIX}/bin/ksh93
-KSH93L_DESC=		Install to ${PREFIX}/bin/ksh93l (legacy)
 
 CFLAGS+=	-DMAP_TYPE
 LDFLAGS+=	-lm
@@ -48,23 +40,30 @@ MAKE_ENV=	CCFLAGS="-Wno-unused-value -Wno-parentheses -Wno-logical-op-parenthese
 
 STATIC_MAKE_ENV=	LDFLAGS+=-static
 
-KSH_PLIST_SUB=		93=""
-KSH93_PLIST_SUB=	93="93"
-KSH93L_PLIST_SUB=	93="93l"
+FLAVORS=		ksh ksh93 ksh93l
+FLAVOR?=		ksh93
+
+.if ${FLAVOR} == ksh
+# Install to ${PREFIX}/bin/ksh
+CONFLICTS=	pdksh
+PLIST_SUB=	93=""
+PNAME=		ksh
+.elif ${FLAVOR} == ksh93
+# Install to ${PREFIX}/bin/ksh93
+CONFLICTS=	ksh93-devel ast-ksh
+PLIST_SUB=	93="93"
+PNAME=		ksh93
+.else
+# Install to ${PREFIX}/bin/ksh93l (legacy)
+PLIST_SUB=	93="93l"
+PNAME=		ksh93l
+PSUFFIX=	l
+.endif
 
 .include <bsd.port.pre.mk>
 
 .if ${CHOSEN_COMPILER_TYPE} == gcc && ${COMPILER_VERSION} >= 90
 BROKEN=	GCC 9.1 changes the output of `gcc -E` which breaks the conf.sh script, fixed in shells/ksh93-devel
-.endif
-
-.if ${PORT_OPTIONS:MKSH93L}
-PNAME=		ksh93l
-PSUFFIX=	l
-.elif ${PORT_OPTIONS:MKSH93}
-PNAME=		ksh93
-.else
-PNAME=		ksh
 .endif
 
 post-patch:

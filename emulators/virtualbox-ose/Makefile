@@ -1,5 +1,6 @@
 PORTNAME=	virtualbox-ose
 PORTVERSION=	6.1.44
+PORTREVISION=	1
 CATEGORIES=	emulators
 MASTER_SITES=	https://download.virtualbox.org/virtualbox/${PORTVERSION}/
 DISTFILES=	VirtualBox-${PORTVERSION}${EXTRACT_SUFX} ${GUESTADDITIONS}
@@ -31,7 +32,6 @@ USE_GNOME=	libidl libxml2
 
 HAS_CONFIGURE=	yes
 CONFIGURE_ARGS=	--disable-java --passive-mesa
-CONFIGURE_ARGS+=	--with-gcc="${CC}" --with-g++="${CXX}"
 
 CONFLICTS_INSTALL=	virtualbox-ose-additions-* \
 			virtualbox-ose-devel \
@@ -114,6 +114,11 @@ SUB_LIST=	VBOXDIR=${VBOX_DIR} \
 USE_RC_SUBR=	vboxheadless vboxwatchdog
 
 .include <bsd.port.options.mk>
+
+# llvm10 in FreeBSD before r364284 miscompiles virtualbox 6.1 causing errors.
+# llvm15 builds but the executable throws error "VERR_INTERNAL_ERROR_3"
+# force llvm from ports to be between 11 and 14
+USES+=		llvm:min=11,max=14
 
 .if ${SLAVE_PORT} == no
 CONFLICTS_INSTALL+=	virtualbox-ose-nox11
@@ -212,16 +217,13 @@ KMK_FLAGS+=	-j${MAKE_JOBS_NUMBER}
 .include <bsd.port.pre.mk>
 
 .if ${CHOSEN_COMPILER_TYPE} == clang
-# llvm10 in FreeBSD before r364284 miscompiles virtualbox 6.1 causing errors.
-# force llvm11 from ports
-.if ${OPSYS} == FreeBSD && ${OSVERSION} < 1300109
-BUILD_DEPENDS+=	clang${VBOX_LLVM_VER}:devel/llvm${VBOX_LLVM_VER}
-CC=		clang${VBOX_LLVM_VER}
-CXX=		clang++${VBOX_LLVM_VER}
-VBOX_LLVM_VER?=	11
-.endif
+CONFIGURE_ARGS+=	--with-gcc="clang${LLVM_VERSION}" --with-g++="clang++${LLVM_VERSION}"
 PATCH_DEPENDS+=	${LOCALBASE}/share/kBuild/tools/GXX3.kmk:devel/kBuild
 EXTRA_PATCHES+=	${PATCHDIR}/extrapatch-src-VBox-Devices-PC-ipxe-Makefile.kmk
+EXTRA_PATCHES+=	${PATCHDIR}/extrapatch-src_VBox_Devices_PC_ipxe_src_core_settings.c
+EXTRA_PATCHES+=	${PATCHDIR}/extrapatch-src_VBox_Devices_PC_ipxe_src_net_tcp_httpcore.c
+.else
+CONFIGURE_ARGS+=	--with-gcc="${CC}" --with-g++="${CXX}"
 .endif
 
 .if ${PYTHON_MAJOR_VER} >= 3

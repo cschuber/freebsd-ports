@@ -118,7 +118,7 @@ USE_RC_SUBR=	vboxheadless vboxwatchdog
 # llvm10 in FreeBSD before r364284 miscompiles virtualbox 6.1 causing errors.
 # llvm15 builds but the executable throws error "VERR_INTERNAL_ERROR_3"
 # force llvm from ports to be between 11 and 14
-USES+=		llvm:min=11,max=14
+USES+=		llvm:min=11
 
 .if ${SLAVE_PORT} == no
 CONFLICTS_INSTALL+=	virtualbox-ose-nox11
